@@ -1,0 +1,66 @@
+library(sf)
+library(ggplot2)
+library(dplyr)
+library(readxl)
+
+# STEP 1: Creating spatial tram stop points and housing location points 
+tram_data <- readxl::read_excel("thesis processed data/tram_stops_cleaned.xlsx")
+tram_sf <- st_as_sf(tram_data, coords = c("longitude", "latitude"), crs = 4326)
+housing_data <- read_excel("thesis processed data/masters_thesis_final_data.xlsx")
+housing_sf <- st_as_sf(housing_data, coords = c("longitude", "latitude"), crs = 4326)
+
+# Transforming to a projected CRS (in meters) for buffering
+tram_projected <- st_transform(tram_sf, crs = 27700)  # British National Grid
+
+
+# Loading full shapefile or geopackage of UK LADs
+uk_lads <- st_read("C:/Users/Holly/OneDrive/David's work/thesis/thesis raw data/Local_Authority_Districts_May_2024_Boundaries_UK_BFC_2554149445924770617.gpkg")  
+
+# Reprojecting to WGS84 (lat/lon)
+uk_lads <- st_transform(uk_lads, crs = 4326)
+
+# Filtering to Greater Manchester boroughs
+gm_boroughs <- uk_lads %>%
+  filter(LAD24NM %in% c(
+    "Manchester", "Salford", "Trafford", "Bolton", "Bury",
+    "Tameside", "Oldham", "Rochdale", "Stockport", "Wigan"
+  ))
+
+
+# STEP 2: Creating 1000m and 1500m buffers
+inner_buffers <- st_buffer(tram_projected, dist = 1000)
+outer_buffers <- st_buffer(tram_projected, dist = 1500)
+
+# Tagging the rings for plotting
+inner_buffers$ring <- "inner"
+outer_buffers$ring <- "outer"
+
+# Combining into one buffer object
+all_buffers <- rbind(inner_buffers, outer_buffers) %>%
+  st_transform(4326)  # Convert back to lat/lon for plotting
+
+# STEP 3: Plotting it all
+ggplot() +
+  # Borough boundaries
+  geom_sf(data = gm_boroughs, fill = "white", color = "black", linewidth = 0.3) +
+  
+  # Buffers
+  geom_sf(data = all_buffers, aes(fill = ring), color = NA, alpha = 0.2) +
+  
+  # Tram stops
+  geom_sf(data = tram_sf, color = "red", shape = 21, fill = "darkred", size = 2) +
+  
+  # Housing points
+  geom_sf(data = housing_sf, aes(color = ring_group), size = 0.5, alpha = 0.5) +
+  
+  # Manual color mapping
+  scale_fill_manual(values = c("inner" = "blue", "outer" = "orange"), name = "Tram Rings") +
+  scale_color_manual(values = c("inner" = "blue", "outer" = "orange"), name = "House Ring Group") +
+  
+  labs(
+    title = "Greater Manchester: Tram Stop Buffers and Housing Points",
+    subtitle = "Inner ring = 1000m, Outer ring = 1500m",
+    x = "", y = ""
+  ) +
+  coord_sf() +
+  theme_minimal()
