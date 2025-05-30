@@ -1,0 +1,94 @@
+# ===============================================================
+# Final Tram Assignment Dataset Creation
+# ===============================================================
+
+library(readxl)
+library(dplyr)
+library(geosphere)
+library(writexl)
+library(lubridate)
+
+# Create timestamp for filename
+timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+
+# ---------------------------------------------------------------
+# STEP 1: Loadwing housing and tram stop data
+# ---------------------------------------------------------------
+
+housing_data <- read_excel("thesis processed data/relevant_housing_data_geocoded.xlsx")
+tram_data <- read_excel("thesis processed data/tram_stops_cleaned.xlsx")
+
+# ---------------------------------------------------------------
+# STEP 2: Computing distances from each house to each tram stop
+# ---------------------------------------------------------------
+
+all_pairs <- merge(
+  housing_data %>% select(id, latitude, longitude),
+  tram_data %>% select(stop_reference, stop_name, latitude, longitude, opening_date),
+  by = NULL
+)
+
+# Calculate Haversine distances in meters
+all_pairs$distance_m <- distHaversine(
+  matrix(c(all_pairs$longitude.x, all_pairs$latitude.x), ncol = 2),
+  matrix(c(all_pairs$longitude.y, all_pairs$latitude.y), ncol = 2)
+)
+
+# ---------------------------------------------------------------
+# STEP 3: Assigning nearest tram stop within 1500m and classify ring
+# ---------------------------------------------------------------
+
+nearest_tram <- all_pairs %>%
+  filter(distance_m <= 1500) %>%
+  group_by(id) %>%
+  slice_min(distance_m, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(
+    ring_group = case_when(
+      distance_m <= 1000 ~ "inner",
+      distance_m > 1000 & distance_m <= 1500 ~ "outer",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(ring_group))
+
+# ---------------------------------------------------------------
+# STEP 4: Joining back to housing data
+# ---------------------------------------------------------------
+
+assigned_data <- housing_data %>%
+  inner_join(nearest_tram %>%
+               select(id, stop_reference, stop_name, distance_m, ring_group, opening_date),
+             by = "id")
+
+# ---------------------------------------------------------------
+# STEP 5: Keeping only tram stops with both inner and outer rings
+# ---------------------------------------------------------------
+
+valid_stops <- assigned_data %>%
+  count(stop_reference, ring_group) %>%
+  tidyr::pivot_wider(names_from = ring_group, values_from = n, values_fill = 0) %>%
+  filter(inner > 0 & outer > 0) %>%
+  pull(stop_reference)
+
+final_data <- assigned_data %>%
+  filter(stop_reference %in% valid_stops)
+
+# ---------------------------------------------------------------
+# STEP 6: Adding sale year, opening year, G, event_time, ring_id
+# ---------------------------------------------------------------
+
+final_data <- final_data %>%
+  mutate(
+    sale_year = year(as.Date(sale_date)),
+    opening_year = year(as.Date(opening_date)),
+    G = if_else(ring_group == "outer", 0L, opening_year),
+    event_time = sale_year - opening_year,
+    ring_id = paste0(stop_reference, "_", ring_group)
+  )
+
+# ---------------------------------------------------------------
+# STEP 7: Exporting the final dataset
+# ---------------------------------------------------------------
+
+write_xlsx(final_data, paste0("thesis processed data/masters_thesis_final_data.xlsx"))
