@@ -1,0 +1,62 @@
+
+library(readxl)
+library(dplyr)
+library(fixest)
+
+# Loading final dataset
+housing_data <- read_excel("thesis processed data/masters_thesis_final_data.xlsx")
+
+# Creating treatment group indicator (used in interaction)
+housing_data <- housing_data %>%
+  mutate(
+    treated = if_else(ring_group == "inner", 1, 0)
+  )
+
+# Running the event study with ring and year fixed effects
+event_study_model <- feols(
+  log(price) ~ i(event_time, treated, ref = -1) | sale_year + ring_id,
+  data = housing_data,
+  cluster = ~ring_id
+)
+
+# Showing summary table of results
+summary(event_study_model)
+
+# Tidying up for ggplot or plot using fixest
+iplot(event_study_model,
+      ref.line = 0,
+      xlab = "Event Time (years relative to tram opening)",
+      main = "Event Study: Effect of Tram Openings on Housing Prices",
+      col = "steelblue", pt.cex = 1.2)
+
+## Filtering for 5 years before and after treatment 
+
+housing_trimmed <- housing_data %>%
+  filter(event_time >= -5 & event_time <= 5)
+
+
+event_study_model_trimmed_5 <- feols(
+  log(price) ~ i(event_time, treated, ref = -1) | sale_year + ring_id,
+  data = housing_trimmed,
+  cluster = ~ring_id
+)
+summary(event_study_model_trimmed_5)
+iplot(event_study_model_trimmed_5,
+      ref.line=0)
+
+# Opening PNG graphics device
+png("figure1_event_study.png", width = 1000, height = 700, res = 150)
+
+# Generating the plot
+iplot(
+  event_study_model_trimmed_5,
+  ref.line = 0,
+  xlab = "Years Relative to Tram Stop Opening",
+  ylab = "Change in Log Housing Price",
+  main = "Figure 1: Event Study – Effect of Tram Stop Openings",
+  col = "steelblue",
+  pt.cex = 1.2
+)
+
+# Closing the graphics device
+dev.off()
