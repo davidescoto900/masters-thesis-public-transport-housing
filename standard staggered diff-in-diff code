@@ -1,0 +1,22 @@
+library(readxl)
+library(dplyr)
+library(fixest)
+
+# Load final dataset
+housing_data <- read_excel("thesis processed data/masters_thesis_final_data.xlsx")
+
+# Create treatment indicator: 1 if in inner ring AND after or in opening year
+housing_data <- housing_data %>%
+  mutate(
+    treated = if_else(ring_group == "inner" & sale_year >= opening_year, 1, 0)
+  )
+
+# Estimate staggered DiD with year and ring fixed effects
+staggered_did_model <- feols(
+  log(price) ~ treated | sale_year + ring_id,
+  data = housing_data,
+  cluster = ~ring_id
+)
+
+# Show the results
+summary(staggered_did_model)
