@@ -9,3 +9,5 @@
 ### The results indicate that, on average, the opening of tram stops does not have a strong or sustained effect on local housing prices. One year after treatment, there is a statistically significant but modest dip in prices, possibly reflecting short-run market adjustments. The longer-run effects are close to zero and not statistically significant.
 
 ### This repository is intended as a public demonstration of applied data analytics in urban economics.
+
+### All data wrangling, merging, and filtering steps are explained in detail in the full thesis (to be uploaded upon completion)
